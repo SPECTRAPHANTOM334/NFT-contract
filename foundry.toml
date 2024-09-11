@@ -7,7 +7,7 @@ fs_permissions = [
     { access = "read", path = "./broadcast" },
 ]
 ffi = true
-
+via_ir = true
 remappings = ['@openzeppelin/contracts=lib/openzeppelin-contracts/contracts']
 
 [etherscan]
