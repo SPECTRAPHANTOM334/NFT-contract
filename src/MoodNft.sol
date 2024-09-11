@@ -5,19 +5,25 @@ import {ERC721} from "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {Base64} from "@openzeppelin/contracts/utils/Base64.sol";
 import "@openzeppelin/contracts/utils/Strings.sol";
-import {AggregatorV3Interface} from "../lib/chainlink-brownie-contracts/contracts/src/v0.8/interfaces/AggregatorV3Interface.sol";
+import "@chainlink/contracts/src/v0.8/interfaces/AggregatorV3Interface.sol";
 
 contract MoodNft is ERC721, Ownable {
     using Strings for uint256;
 
     error ERC721Metadata__URI_QueryFor_NonExistentToken();
     error MoodNft__CantFlipMoodIfNotOwner();
+    error MoodNft__AlreadyMinted();
 
-    uint256 public s_tokenCounter;
+    uint256 public constant MINT_AMOUNT = 1000;
+    uint256 private s_tokenCounter;
 
-    AggregatorV3Interface public priceFeed;
+    // mapping(uint256 => NFTState) private s_tokenIdToState;
+    AggregatorV3Interface internal priceFeed;
     string private md1 = "data:application/json;base64,";
     string private md2 = "data:image/svg+xml;base64,";
+
+    // Mapping to track the number of NFTs minted by each address
+    mapping(address => bool) private _hasMinted;
 
     event CreatedNFT(uint256 indexed tokenId);
 
@@ -34,6 +40,8 @@ contract MoodNft is ERC721, Ownable {
         uint256 feel_up;
         uint256 feel_down;
     }
+
+    // strings below
 
     string private ear1 =
         '" /> <ellipse rx="69.0731" ry="65.7308" transform="matrix(.188577 0 0 0.484658 128.565251 218.143006)" fill="';
@@ -166,22 +174,32 @@ contract MoodNft is ERC721, Ownable {
     string private eyebrowRight =
         '" />   <line x1="-35.093567" y1="3.342246" x2="35.093568" y2="-3.342246" transform="matrix(.797604 0.267512-.311496 0.928746 290.973327 160.128534)" stroke-width="4" stroke="'; // eyebrow right
 
+    // Background [0]
     string private p0 =
         '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 500"> <rect width="100%" height="100%" fill="';
+    // Body [1]
     string private p1 =
         '" /><ellipse rx="115.865" ry="220.031" transform="matrix(.933 0 0 0.837977 245.544 567.625)" fill="';
+    // Face [2]
     string private p2 =
         '" /><ellipse rx="69.0731" ry="65.7308" transform="matrix(1.69355 0 0 2.27118 245.544 250)" fill="';
+    // Eye 1 [3]
     string private p3 =
         '" /> <ellipse rx="19.4964" ry="7.79857" transform="matrix(1.97143 0 0 1.71426 202.652 189.394)" fill="';
+    // Eye 2 [4]
     string private p4 =
         '" /> <ellipse rx="19.4964" ry="7.79857" transform="matrix(1.8 0 0 1.71426 294.006 189.394)" fill="';
+    // Eye pupil [5]
     string private p5 =
         '" /> <ellipse rx="12.254902" ry="9.469498" transform="translate(';
+    // [6]
     string private p6 = ')" fill="';
+    // Eye pupil 2 [7]
     string private p7 =
         '" />  <ellipse rx="12.254902" ry="9.469498" transform="matrix(-.999962-.008743 0.008743-.999962 ';
+    // [8]
     string private p8 = ')" fill="';
+    // Ending SVG [9]
     string private p9 = '" /> </svg>';
 
     string[] private eyeLeft = [
@@ -256,7 +274,7 @@ contract MoodNft is ERC721, Ownable {
         "yellowgreen",
         "lightseagreen",
         "black"
-    ];
+    ]; // only trait that is uniform, no need for rarity weights
 
     string[] private eyesClr = [
         "#000",
@@ -280,6 +298,7 @@ contract MoodNft is ERC721, Ownable {
         ""
     ];
 
+    // string[] private faceClr = ["#fdf5e2", "#D2B48C", "#fff5de", "#ECBE83", "#F1DCB7", "#ffd59a", "#f5e0d8", "#F7D6B3", "#ecebe6",  "#f9f5ec", "#d2691e", "#c1b094", "#EADDCA", "#6CC417", "#595a5c"];
     string[] private faceClr = [
         "#E9CBA9",
         "#EECEB7",
@@ -334,31 +353,42 @@ contract MoodNft is ERC721, Ownable {
         "brown"
     ];
 
+    //strings above
+
     constructor() ERC721("Mood NFT", "MN") Ownable(msg.sender) {
         s_tokenCounter = 0;
         priceFeed = AggregatorV3Interface(
-            0x8A753747A1Fa494EC906cE90E9f37563A8AF630e
+            0x694AA1769357215DE4FAC081bf1f309aDC325306
         );
     }
 
     function mintNft() public {
-        uint256 tokenCounter = s_tokenCounter;
-        _safeMint(msg.sender, tokenCounter);
-        s_tokenCounter = s_tokenCounter + 1;
+        require(!_hasMinted[msg.sender], "User has already minted 10,000 NFTs");
+
+        for (uint256 i = 0; i < MINT_AMOUNT; i++) {
+            _safeMint(msg.sender, s_tokenCounter);
+            s_tokenCounter += 1;
+        }
+
+        _hasMinted[msg.sender] = true; // Mark user as having minted their NFTs
     }
 
-    function getHistoricalPrice(uint80 roundId) public view returns (int256) {
+    function hasMinted(address user) public view returns (bool) {
+        return _hasMinted[user];
+    }
+
+    function getHistoricalPrice(uint80 roundId) private view returns (int256) {
         (, int256 price, , , ) = priceFeed.getRoundData(roundId - 23);
         return price;
     }
 
     // different function below
-    function buildImage(uint256 _tokenId) public view returns (string memory) {
+    function buildImage(uint256 _tokenId) private view returns (string memory) {
         Feel memory feel = randomOne(_tokenId);
-        // (uint80 roundId, int256 price, , , ) = priceFeed.latestRoundData();
-        // int256 histPrice = getHistoricalPrice(roundId);
+        (uint80 roundId, int256 price, , , ) = priceFeed.latestRoundData();
+        int256 histPrice = getHistoricalPrice(roundId);
 
-        int256 percentageChange = 1;
+        int256 percentageChange = (price - histPrice) / 1000000000;
         string memory senti = _tokenId.toString();
         uint256 eyes_clr = 3;
 
@@ -624,7 +654,7 @@ contract MoodNft is ERC721, Ownable {
     }
 
     // helper function
-    function toString(uint256 _value) public pure returns (string memory) {
+    function toString(uint256 _value) internal pure returns (string memory) {
         // Inspired by OraclizeAPI's implementation - MIT license
         // https://github.com/oraclize/ethereum-api/blob/b42146b063c7d6ee1358846c198246239e9360e8/oraclizeAPI_0.4.25.sol
         if (_value == 0) {
@@ -646,7 +676,7 @@ contract MoodNft is ERC721, Ownable {
     }
 
     // generate randomness
-    function randomOne(uint256 _tokenId) public pure returns (Feel memory) {
+    function randomOne(uint256 _tokenId) internal pure returns (Feel memory) {
         uint256 rand = uint256(
             keccak256(
                 abi.encodePacked(
@@ -675,7 +705,7 @@ contract MoodNft is ERC721, Ownable {
         Feel memory _feel,
         string memory _feels,
         uint256 _tokenId
-    ) public view returns (string memory) {
+    ) private view returns (string memory) {
         string memory gend = "female";
         if (_feel.hairtype < 4) {
             gend = "male";
@@ -744,6 +774,10 @@ contract MoodNft is ERC721, Ownable {
     }
 
     // different function above
+
+    function _baseURI() internal pure override returns (string memory) {
+        return "data:application/json;base64,";
+    }
 
     function tokenURI(
         uint256 tokenId

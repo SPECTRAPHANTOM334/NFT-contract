@@ -235,7 +235,7 @@ contract MoodNftTest is Test {
         vm.stopPrank();
     }
 
-    function testBuildMetadata() public {
+    function testBuildMetadata() public view {
         // Mock image and feels values
         string memory image = "imageMockBase64";
         string memory feels = "happy";
